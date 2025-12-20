@@ -6,7 +6,6 @@ import time
 st.set_page_config(page_title="Control de Calidad", page_icon="🏗️")
 
 # --- 2. ESTILOS CSS (Visuales) ---
-# Esto oculta el botón "Deploy", el menú hamburguesa y crea tu Footer personalizado
 estilo_personalizado = """
     <style>
         #MainMenu {visibility: hidden;}
@@ -29,7 +28,7 @@ estilo_personalizado = """
     </style>
     
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02.04
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
@@ -46,13 +45,14 @@ except:
 # --- 4. GESTIÓN DE SESIÓN ---
 if 'usuario' not in st.session_state:
     st.session_state['usuario'] = None
+if 'access_token' not in st.session_state:
+    st.session_state['access_token'] = None
 
 # --- 5. PANTALLA DE ACCESO (LOGIN / REGISTRO / RECUPERAR) ---
 def mostrar_acceso():
     st.title("🏗️ Concreto 5")
     st.write("Control de Calidad para Concreto en Obra")
     
-    # Creamos 3 pestañas para organizar las opciones
     tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Recuperar Contraseña"])
     
     # --- PESTAÑA 1: LOGIN ---
@@ -64,14 +64,15 @@ def mostrar_acceso():
             
             if submit:
                 try:
-                    session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.session_state['usuario'] = session.user
+                    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state['usuario'] = response.user
+                    st.session_state['access_token'] = response.session.access_token
                     st.success("✅ Acceso autorizado")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
                     st.error("❌ Usuario o contraseña incorrectos")
-
+    
     # --- PESTAÑA 2: CREAR USUARIO ---
     with tab2:
         st.info("Solo para personal autorizado.")
@@ -82,48 +83,44 @@ def mostrar_acceso():
             
             if submit_new:
                 try:
-                    # Intenta crear el usuario
                     supabase.auth.sign_up({"email": new_email, "password": new_pass})
                     st.success("✅ Usuario creado. ¡Revisa tu correo para confirmar la cuenta!")
                 except Exception as e:
                     st.error(f"Error al crear: {e}")
-
-# --- PESTAÑA 3: INGRESO CON CÓDIGO (SOLUCIÓN FINAL) ---
+    
+    # --- PESTAÑA 3: INGRESO CON CÓDIGO ---
     with tab3:
         st.write("Si olvidaste tu clave, ingresa usando un código temporal que enviaremos a tu correo.")
         
-        # --- PASO 1: PEDIR EL CÓDIGO ---
         email_otp = st.text_input("Ingresa tu correo registrado", key="otp_email")
         
         if st.button("1. Enviar Código de Acceso"):
             if email_otp:
                 try:
-                    # Envía el código numérico al correo
                     supabase.auth.sign_in_with_otp({"email": email_otp})
                     st.info("📧 Código enviado. Revisa tu bandeja de entrada (busca el número grande).")
                 except Exception as e:
                     st.error(f"Error al enviar: {e}")
             else:
                 st.warning("Por favor, escribe tu correo primero.")
-
-        st.divider() # Línea visual para separar los pasos
         
-        # --- PASO 2: VALIDAR EL CÓDIGO ---
+        st.divider()
+        
         st.write("Una vez tengas el código, ingrésalo aquí:")
         otp_code = st.text_input("Código de 6 dígitos", placeholder="Ej: 123456", key="otp_code_input")
         
         if st.button("2. Validar y Entrar", type="primary"):
             if email_otp and otp_code:
                 try:
-                    # Intenta canjear el código por una sesión válida
-                    session = supabase.auth.verify_otp({
+                    response = supabase.auth.verify_otp({
                         "email": email_otp, 
                         "token": otp_code, 
-                        "type": "magiclink"
+                        "type": "email"
                     })
                     
-                    if session.user:
-                        st.session_state['usuario'] = session.user
+                    if response.user:
+                        st.session_state['usuario'] = response.user
+                        st.session_state['access_token'] = response.session.access_token
                         st.success("✅ ¡Código correcto! Iniciando sesión...")
                         time.sleep(1)
                         st.rerun()
@@ -132,46 +129,55 @@ def mostrar_acceso():
             else:
                 st.warning("Debes ingresar el correo y el código.")
 
-# --- 6. APP PRINCIPAL (SOLO VISIBLE SI ESTÁS LOGUEADO) ---
+# --- 6. APP PRINCIPAL ---
 def mostrar_app_principal():
     with st.sidebar:
-        # --- SECCIÓN SUPERIOR: DATOS DEL USUARIO ---
-        st.write(f"👤 Ing. {st.session_state['usuario'].email}")
-        st.divider() # Línea separadora estética
-
-        # --- SECCIÓN MEDIA: CAMBIO DE CONTRASEÑA ---
+        st.write(f"👤 {st.session_state['usuario'].email}")
+        st.divider()
+        
+        # --- CAMBIO DE CONTRASEÑA CORREGIDO ---
         with st.expander("🔐 Cambiar Contraseña"):
             with st.form("change_pass_form"):
-                new_password = st.text_input("Nueva Contraseña", type="password")
-                confirm_password = st.text_input("Confirmar Contraseña", type="password")
+                new_password = st.text_input("Nueva contraseña", type="password")
+                confirm_password = st.text_input("Confirmar contraseña", type="password")
                 submit_change = st.form_submit_button("Actualizar Clave")
             
                 if submit_change:
                     if new_password == confirm_password:
                         if len(new_password) >= 6:
                             try:
-                                supabase.auth.update_user({"password": new_password})
-                                st.success("✅ ¡Contraseña actualizada!")
-                                time.sleep(1)
+                                # Configurar el token de acceso antes de actualizar
+                                supabase.postgrest.auth(st.session_state['access_token'])
+                                
+                                response = supabase.auth.update_user({"password": new_password})
+                                
+                                if response.user:
+                                    st.success("✅ ¡Contraseña actualizada!")
+                                    time.sleep(1)
+                                else:
+                                    st.error("Error: Auth session missing!")
+                                    st.info("💡 Intenta cerrar sesión y volver a entrar.")
                             except Exception as e:
                                 st.error(f"Error: {e}")
+                                st.info("💡 Cierra sesión e ingresa de nuevo para cambiar tu contraseña.")
                         else:
                             st.warning("Mínimo 6 caracteres.")
                     else:
                         st.error("Las contraseñas no coinciden.")
-
-        # --- SECCIÓN INFERIOR: SALIDA ---
+        
         st.divider()
+        
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state['usuario'] = None
+            st.session_state['access_token'] = None
             st.rerun()
-            
-    # --- ÁREA PRINCIPAL DE TRABAJO ---
+    
+    # --- ÁREA PRINCIPAL ---
     st.title("Panel de Control 🧱")
+    st.info("Bienvenido al sistema v1.08")
     st.divider()
     
-    # AQUÍ IRÁ TU LÓGICA DE PROBETAS Y SLUMP
     st.info("Bienvenido al módulo de control. Selecciona una opción en el menú.")
 
 # --- 7. CONTROL DE FLUJO ---
