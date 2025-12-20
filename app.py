@@ -5,8 +5,13 @@ import time
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Control de Calidad", page_icon="🏗️")
 
-# --- 2. ESTILOS CSS (Visuales) ---
-# Esto oculta el botón "Deploy", el menú hamburguesa y crea tu Footer personalizado
+# --- 2. GESTIÓN DE ESTADO (Inicialización de variables) ---
+if 'usuario' not in st.session_state:
+    st.session_state['usuario'] = None
+if 'sesion_activa' not in st.session_state:
+    st.session_state['sesion_activa'] = None
+
+# --- 3. ESTILOS CSS ---
 estilo_personalizado = """
     <style>
         #MainMenu {visibility: hidden;}
@@ -25,80 +30,87 @@ estilo_personalizado = """
             font-size: 14px;
             font-weight: bold;
             border-top: 1px solid #ddd;
+            z-index: 999;
         }
     </style>
-    
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.03
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
 
-# --- 3. CONEXIÓN A SUPABASE ---
+# --- 4. CONEXIÓN A SUPABASE Y RESTAURACIÓN DE SESIÓN ---
 try:
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
     supabase = create_client(url, key)
-except:
-    st.error("⚠️ Error: No se detectaron los secretos de conexión.")
+    
+    # [CRÍTICO] RESTAURAR SESIÓN SI EXISTE
+    # Esto evita el error "Auth session missing" al recargar la página
+    if st.session_state['sesion_activa']:
+        try:
+            supabase.auth.set_session(
+                st.session_state['sesion_activa'].access_token, 
+                st.session_state['sesion_activa'].refresh_token
+            )
+        except Exception as e:
+            # Si el token venció o hay error, limpiamos todo para obligar a reloguear
+            st.session_state['usuario'] = None
+            st.session_state['sesion_activa'] = None
+except Exception as e:
+    st.error(f"⚠️ Error de conexión con la base de datos: {e}")
     st.stop()
 
-# --- 4. GESTIÓN DE SESIÓN ---
-if 'usuario' not in st.session_state:
-    st.session_state['usuario'] = None
-
-# --- 5. PANTALLA DE ACCESO (LOGIN / REGISTRO / RECUPERAR) ---
+# --- 5. PANTALLA DE ACCESO ---
 def mostrar_acceso():
     st.title("🏗️ Concreto 5")
     st.write("Control de Calidad para Concreto en Obra")
     
-    # Creamos 3 pestañas para organizar las opciones
-    tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Recuperar Contraseña"])
+    tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Ingreso con Código (Olvidé Clave)"])
     
-    # --- PESTAÑA 1: LOGIN ---
+    # --- LOGIN CLÁSICO ---
     with tab1:
         with st.form("login_form"):
-            email = st.text_input("Correo Electrónico", key="login_email", placeholder="Ingresa tu correo")
-            password = st.text_input("Contraseña", type="password", key="login_pass", placeholder="Ingresa tu contraseña")
+            email = st.text_input("Correo Electrónico", key="login_email")
+            password = st.text_input("Contraseña", type="password", key="login_pass")
             submit = st.form_submit_button("Ingresar al Sistema", type="primary")
             
             if submit:
                 try:
                     session = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state['usuario'] = session.user
+                    st.session_state['sesion_activa'] = session # <--- GUARDAMOS LA SESIÓN TÉCNICA
                     st.success("✅ Acceso autorizado")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
                     st.error("❌ Usuario o contraseña incorrectos")
 
-    # --- PESTAÑA 2: CREAR USUARIO ---
+    # --- REGISTRO DE USUARIO ---
     with tab2:
         st.info("Solo para personal autorizado.")
         with st.form("signup_form"):
-            new_email = st.text_input("Nuevo Correo", key="new_email", placeholder="Ingresa tu correo")
-            new_pass = st.text_input("Nueva Contraseña", type="password", key="new_pass", placeholder="Ingresa tu contraseña")
+            new_email = st.text_input("Nuevo Correo", key="new_email")
+            new_pass = st.text_input("Nueva Contraseña", type="password", key="new_pass")
             submit_new = st.form_submit_button("Registrar Usuario")
             
             if submit_new:
                 try:
-                    # Intenta crear el usuario
                     supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                    st.success("✅ Usuario creado. ¡Revisa tu correo para confirmar la cuenta!")
+                    st.success("✅ Usuario creado. ¡Revisa tu correo para confirmar!")
                 except Exception as e:
                     st.error(f"Error al crear: {e}")
 
-# --- PESTAÑA 3: INGRESO CON CÓDIGO (SOLUCIÓN FINAL) ---
+    # --- INGRESO CON CÓDIGO (OTP) ---
     with tab3:
-        st.write("Si olvidaste tu clave, ingresa usando un código temporal que enviaremos a tu correo.")
+        st.write("Si olvidaste tu clave, ingresa usando un código temporal.")
         
-        # --- PASO 1: PEDIR EL CÓDIGO ---
+        # Paso 1: Pedir código
         email_otp = st.text_input("Ingresa tu correo registrado", key="otp_email")
         
         if st.button("1. Enviar Código de Acceso"):
             if email_otp:
                 try:
-                    # Envía el código numérico al correo
                     supabase.auth.sign_in_with_otp({"email": email_otp})
                     st.info("📧 Código enviado. Revisa tu bandeja de entrada (busca el número grande).")
                 except Exception as e:
@@ -106,16 +118,15 @@ def mostrar_acceso():
             else:
                 st.warning("Por favor, escribe tu correo primero.")
 
-        st.divider() # Línea visual para separar los pasos
+        st.divider()
         
-        # --- PASO 2: VALIDAR EL CÓDIGO ---
+        # Paso 2: Validar código
         st.write("Una vez tengas el código, ingrésalo aquí:")
         otp_code = st.text_input("Código de 6 dígitos", placeholder="Ej: 123456", key="otp_code_input")
         
         if st.button("2. Validar y Entrar", type="primary"):
             if email_otp and otp_code:
                 try:
-                    # Intenta canjear el código por una sesión válida
                     session = supabase.auth.verify_otp({
                         "email": email_otp, 
                         "token": otp_code, 
@@ -124,6 +135,7 @@ def mostrar_acceso():
                     
                     if session.user:
                         st.session_state['usuario'] = session.user
+                        st.session_state['sesion_activa'] = session # <--- GUARDAMOS LA SESIÓN TÉCNICA AQUÍ TAMBIÉN
                         st.success("✅ ¡Código correcto! Iniciando sesión...")
                         time.sleep(1)
                         st.rerun()
@@ -132,14 +144,14 @@ def mostrar_acceso():
             else:
                 st.warning("Debes ingresar el correo y el código.")
 
-# --- 6. APP PRINCIPAL (SOLO VISIBLE SI ESTÁS LOGUEADO) ---
+# --- 6. APP PRINCIPAL (Panel de Control) ---
 def mostrar_app_principal():
     with st.sidebar:
-        # --- SECCIÓN SUPERIOR: DATOS DEL USUARIO ---
+        # --- Datos del Usuario ---
         st.write(f"👤 Ing. {st.session_state['usuario'].email}")
-        st.divider() # Línea separadora estética
+        st.divider()
 
-        # --- SECCIÓN MEDIA: CAMBIO DE CONTRASEÑA ---
+        # --- Cambio de Contraseña ---
         with st.expander("🔐 Cambiar Contraseña"):
             with st.form("change_pass_form"):
                 new_password = st.text_input("Nueva Contraseña", type="password")
@@ -160,18 +172,17 @@ def mostrar_app_principal():
                     else:
                         st.error("Las contraseñas no coinciden.")
 
-        # --- SECCIÓN INFERIOR: SALIDA ---
+        # --- Botón de Salida ---
         st.divider()
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state['usuario'] = None
+            st.session_state['sesion_activa'] = None # <--- LIMPIEZA TOTAL
             st.rerun()
             
-    # --- ÁREA PRINCIPAL DE TRABAJO ---
+    # --- ÁREA DE TRABAJO ---
     st.title("Panel de Control 🧱")
     st.divider()
-    
-    # AQUÍ IRÁ TU LÓGICA DE PROBETAS Y SLUMP
     st.info("Bienvenido al módulo de control. Selecciona una opción en el menú.")
 
 # --- 7. CONTROL DE FLUJO ---
