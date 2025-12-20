@@ -28,7 +28,7 @@ estilo_personalizado = """
     </style>
     
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v2.0
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v2.5
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
@@ -51,7 +51,7 @@ def mostrar_acceso():
     st.title("🏗️ Concreto 5")
     st.write("Control de Calidad para Concreto en Obra")
     
-    tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Olvidé mi Contraseña"])
+    tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Cambiar Contraseña"])
     
     # --- PESTAÑA 1: LOGIN ---
     with tab1:
@@ -75,31 +75,35 @@ def mostrar_acceso():
         st.info("Solo para personal autorizado.")
         with st.form("signup_form"):
             new_email = st.text_input("Nuevo Correo", key="new_email", placeholder="Ingresa tu correo")
-            new_pass = st.text_input("Nueva Contraseña", type="password", key="new_pass", placeholder="Mínimo 6 caracteres")
-            submit_new = st.form_submit_button("Registrar Usuario")
+            new_pass = st.text_input("Contraseña Temporal", type="password", key="new_pass", placeholder="Mínimo 6 caracteres")
+            submit_new = st.form_submit_button("Crear Usuario")
             
             if submit_new:
                 if len(new_pass) >= 6:
                     try:
                         supabase.auth.sign_up({"email": new_email, "password": new_pass})
-                        st.success("✅ Usuario creado. ¡Revisa tu correo para confirmar!")
+                        st.success("✅ Usuario creado. El usuario debe revisar su correo y cambiar la contraseña temporal.")
+                        st.warning("⚠️ Asegúrate de informarle al usuario que debe cambiar su contraseña en 'Cambiar Contraseña'.")
                     except Exception as e:
                         st.error(f"Error: {e}")
                 else:
                     st.warning("La contraseña debe tener al menos 6 caracteres.")
     
-    # --- PESTAÑA 3: OLVIDÉ MI CONTRASEÑA ---
+    # --- PESTAÑA 3: CAMBIAR CONTRASEÑA (AUTOSERVICIO) ---
     with tab3:
-        st.write("### 🔑 Recuperar Acceso")
-        st.info("Te enviaremos un código de 8 dígitos para ingresar temporalmente.")
+        st.write("### 🔐 Cambiar mi Contraseña")
+        st.info("Este proceso es 100% privado. Nadie más conocerá tu nueva contraseña.")
         
-        email_otp = st.text_input("Tu correo", key="otp_email", placeholder="ejemplo@correo.com")
+        st.write("**Paso 1:** Solicita un código de verificación")
+        email_change = st.text_input("Tu correo", key="email_change", placeholder="ejemplo@correo.com")
         
-        if st.button("📧 Enviar Código", type="primary", use_container_width=True):
-            if email_otp:
+        if st.button("📧 Enviar Código de Verificación", type="primary", use_container_width=True):
+            if email_change:
                 try:
-                    supabase.auth.sign_in_with_otp({"email": email_otp})
+                    # Enviar código OTP
+                    supabase.auth.sign_in_with_otp({"email": email_change})
                     st.success("✅ Código enviado. Revisa tu correo.")
+                    st.info("Usa el código de 8 dígitos para verificar tu identidad.")
                 except Exception as e:
                     st.error(f"Error: {e}")
             else:
@@ -107,26 +111,52 @@ def mostrar_acceso():
         
         st.divider()
         
-        otp_code = st.text_input("Código de 8 dígitos", placeholder="12345678", key="otp_code", max_chars=8)
+        st.write("**Paso 2:** Verifica tu identidad e ingresa tu nueva contraseña")
         
-        if st.button("✅ Ingresar", use_container_width=True):
-            if email_otp and otp_code:
-                try:
-                    response = supabase.auth.verify_otp({
-                        "email": email_otp, 
-                        "token": otp_code, 
-                        "type": "email"
-                    })
-                    
-                    if response.user:
-                        st.session_state['usuario'] = response.user
-                        st.success("✅ Acceso concedido")
-                        time.sleep(1)
-                        st.rerun()
-                except Exception as e:
-                    st.error("❌ Código incorrecto o expirado.")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            otp_code = st.text_input("Código de 8 dígitos", placeholder="12345678", key="otp_change", max_chars=8)
+        
+        with col2:
+            new_password = st.text_input("Nueva Contraseña", type="password", key="new_pass_change", placeholder="Mínimo 6 caracteres")
+        
+        confirm_password = st.text_input("Confirmar Nueva Contraseña", type="password", key="confirm_pass_change", placeholder="Repite tu contraseña")
+        
+        if st.button("✅ Verificar y Cambiar Contraseña", use_container_width=True):
+            if email_change and otp_code and new_password and confirm_password:
+                if new_password == confirm_password:
+                    if len(new_password) >= 6:
+                        try:
+                            # Primero verificar el código OTP
+                            response = supabase.auth.verify_otp({
+                                "email": email_change, 
+                                "token": otp_code, 
+                                "type": "email"
+                            })
+                            
+                            if response.user:
+                                # Una vez verificado, cambiar la contraseña
+                                update_response = supabase.auth.update_user({"password": new_password})
+                                
+                                if update_response.user:
+                                    st.success("🎉 ¡Contraseña actualizada exitosamente!")
+                                    st.info("Ahora puedes iniciar sesión con tu nueva contraseña en la pestaña 'Iniciar Sesión'.")
+                                    
+                                    # Cerrar la sesión temporal
+                                    supabase.auth.sign_out()
+                                    time.sleep(3)
+                                    st.rerun()
+                                else:
+                                    st.error("Error al actualizar la contraseña.")
+                        except Exception as e:
+                            st.error(f"❌ Código incorrecto o expirado. Solicita uno nuevo.")
+                    else:
+                        st.warning("⚠️ La contraseña debe tener al menos 6 caracteres.")
+                else:
+                    st.error("❌ Las contraseñas no coinciden.")
             else:
-                st.warning("Completa ambos campos.")
+                st.warning("⚠️ Completa todos los campos.")
 
 # --- 6. APP PRINCIPAL ---
 def mostrar_app_principal():
@@ -134,7 +164,7 @@ def mostrar_app_principal():
         st.write(f"👤 {st.session_state['usuario'].email}")
         st.divider()
         
-        st.info("💡 **Cambio de contraseña:** Contacta al administrador del sistema.")
+        st.info("🔐 **Para cambiar tu contraseña:** Cierra sesión y usa la pestaña 'Cambiar Contraseña'.")
         
         st.divider()
         
@@ -151,7 +181,7 @@ def mostrar_app_principal():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.success(f"✅ Bienvenido al sistema v2.0")
+        st.success(f"✅ Bienvenido al sistema v2.5")
     
     with col2:
         st.metric("Estado", "Activo", delta="Online")
