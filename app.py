@@ -29,7 +29,7 @@ estilo_personalizado = """
     </style>
     
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.0
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.01
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
