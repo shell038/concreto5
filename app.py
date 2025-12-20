@@ -28,7 +28,7 @@ estilo_personalizado = """
     </style>
     
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02.09
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02.10
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
@@ -111,7 +111,7 @@ def mostrar_acceso():
         
         # PASO 2: Ingresar código
         st.write("**Paso 2:** Ingresa el código que recibiste")
-        otp_code = st.text_input("Código de 6 dígitos", placeholder="123456", key="otp_code_input", max_chars=6)
+        otp_code = st.text_input("Código (8 dígitos)", placeholder="12345678", key="otp_code_input", max_chars=8)
         
         if st.button("✅ Validar e Ingresar", use_container_width=True):
             if email_otp and otp_code:
