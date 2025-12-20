@@ -28,7 +28,7 @@ estilo_personalizado = """
     </style>
     
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02.07
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02.08
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
@@ -45,8 +45,61 @@ except:
 # --- 4. GESTIÓN DE SESIÓN ---
 if 'usuario' not in st.session_state:
     st.session_state['usuario'] = None
+if 'modo_recuperacion' not in st.session_state:
+    st.session_state['modo_recuperacion'] = False
 
-# --- 5. PANTALLA DE ACCESO ---
+# --- 4.5 DETECTAR SI VIENE DEL ENLACE DE RECUPERACIÓN ---
+query_params = st.query_params
+if 'type' in query_params and query_params['type'] == 'recovery':
+    st.session_state['modo_recuperacion'] = True
+    if 'access_token' in query_params:
+        st.session_state['recovery_token'] = query_params['access_token']
+
+# --- 5. PANTALLA DE RECUPERACIÓN DE CONTRASEÑA ---
+def mostrar_cambio_password():
+    st.title("🔐 Cambiar Contraseña")
+    st.write("Crea tu nueva contraseña de acceso")
+    
+    with st.form("reset_password_form"):
+        new_pass = st.text_input("Nueva Contraseña", type="password", placeholder="Mínimo 6 caracteres")
+        confirm_pass = st.text_input("Confirmar Contraseña", type="password", placeholder="Repite la contraseña")
+        submit = st.form_submit_button("✅ Establecer Nueva Contraseña", type="primary")
+        
+        if submit:
+            if new_pass == confirm_pass:
+                if len(new_pass) >= 6:
+                    try:
+                        # Usar el token de recuperación para cambiar la contraseña
+                        response = supabase.auth.update_user({"password": new_pass})
+                        
+                        if response.user:
+                            st.success("✅ ¡Contraseña actualizada exitosamente!")
+                            st.info("Ahora puedes iniciar sesión con tu nueva contraseña.")
+                            time.sleep(2)
+                            # Limpiar el modo recuperación
+                            st.session_state['modo_recuperacion'] = False
+                            if 'recovery_token' in st.session_state:
+                                del st.session_state['recovery_token']
+                            # Limpiar query params
+                            st.query_params.clear()
+                            st.rerun()
+                        else:
+                            st.error("Error al actualizar la contraseña.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.warning("⚠️ La contraseña debe tener al menos 6 caracteres.")
+            else:
+                st.error("❌ Las contraseñas no coinciden.")
+    
+    if st.button("← Volver al inicio"):
+        st.session_state['modo_recuperacion'] = False
+        if 'recovery_token' in st.session_state:
+            del st.session_state['recovery_token']
+        st.query_params.clear()
+        st.rerun()
+
+# --- 6. PANTALLA DE ACCESO ---
 def mostrar_acceso():
     st.title("🏗️ Concreto 5")
     st.write("Control de Calidad para Concreto en Obra")
@@ -99,8 +152,8 @@ def mostrar_acceso():
             if email_reset:
                 try:
                     supabase.auth.reset_password_email(email_reset)
-                    st.success("✅ ¡Enlace enviado! Revisa tu correo (también en spam) y sigue las instrucciones.")
-                    st.info("El enlace te llevará a una página donde podrás crear tu nueva contraseña.")
+                    st.success("✅ ¡Enlace enviado! Revisa tu correo (también en spam).")
+                    st.info("📌 Haz clic en el enlace del correo para establecer tu nueva contraseña.")
                 except Exception as e:
                     st.error(f"Error: {e}")
             else:
@@ -148,7 +201,7 @@ def mostrar_acceso():
                 else:
                     st.warning("Completa ambos campos.")
 
-# --- 6. APP PRINCIPAL ---
+# --- 7. APP PRINCIPAL ---
 def mostrar_app_principal():
     with st.sidebar:
         st.write(f"👤 {st.session_state['usuario'].email}")
@@ -160,9 +213,10 @@ def mostrar_app_principal():
             st.write("1. Cierra sesión (botón abajo)")
             st.write("2. Ve a la pestaña 'Recuperar Contraseña'")
             st.write("3. Usa la opción de correo electrónico")
-            st.write("4. Recibirás un enlace seguro para cambiarla")
+            st.write("4. Haz clic en el enlace del correo")
+            st.write("5. Establece tu nueva contraseña")
             
-            st.success("✅ Este método es más seguro y confiable.")
+            st.success("✅ Método seguro y confiable.")
         
         st.divider()
         
@@ -179,7 +233,7 @@ def mostrar_app_principal():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.info(f"Bienvenido al sistema v1.10")
+        st.info(f"Bienvenido al sistema v1.11")
     
     with col2:
         st.metric("Usuario", "Activo", delta="Online")
@@ -202,8 +256,13 @@ def mostrar_app_principal():
     with tab_c:
         st.info("Sección de reportes y análisis - Próximamente")
 
-# --- 7. CONTROL DE FLUJO ---
-if st.session_state['usuario'] is None:
-    mostrar_acceso()
-else:
+# --- 8. CONTROL DE FLUJO ---
+# Prioridad 1: Si viene del enlace de recuperación
+if st.session_state['modo_recuperacion']:
+    mostrar_cambio_password()
+# Prioridad 2: Si hay usuario logueado
+elif st.session_state['usuario'] is not None:
     mostrar_app_principal()
+# Prioridad 3: Pantalla de login
+else:
+    mostrar_acceso()
