@@ -18,7 +18,7 @@ st.markdown("""
         }
     </style>
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.05
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.06
     </div>
 """, unsafe_allow_html=True)
 
@@ -34,7 +34,7 @@ except:
 # --- 4. VARIABLES DE SESIÓN ---
 if 'usuario' not in st.session_state:
     st.session_state['usuario'] = None
-# [NUEVO] Variable para guardar la llave maestra
+# [CRÍTICO] Variable para guardar la llave maestra y evitar "Auth session missing"
 if 'access_token' not in st.session_state:
     st.session_state['access_token'] = None
 
@@ -43,9 +43,9 @@ def mostrar_acceso():
     st.title("🏗️ Concreto 5")
     st.write("Control de Calidad para Concreto en Obra")
     
-    tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Recuperar Contraseña"])
+    tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Ingreso con Código"])
     
-    # LOGIN
+    # --- TAB 1: LOGIN ---
     with tab1:
         with st.form("login_form"):
             email = st.text_input("Correo", key="log_email")
@@ -54,15 +54,14 @@ def mostrar_acceso():
                 try:
                     session = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state['usuario'] = session.user
-                    # [NUEVO] Guardamos el token de seguridad
-                    st.session_state['access_token'] = session.access_token 
+                    st.session_state['access_token'] = session.access_token # Guardamos llave
                     st.success("✅ Bienvenido")
                     time.sleep(1)
                     st.rerun()
                 except:
                     st.error("❌ Credenciales incorrectas")
 
-    # REGISTRO
+    # --- TAB 2: REGISTRO ---
     with tab2:
         st.info("Registro de nuevos ingenieros.")
         with st.form("signup_form"):
@@ -75,27 +74,54 @@ def mostrar_acceso():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-    # RECUPERAR
+    # --- TAB 3: RECUPERAR (MÉTODO CÓDIGO NUMÉRICO) ---
     with tab3:
-        st.write("Te enviaremos un enlace mágico.")
-        rec_email = st.text_input("Tu correo", key="rec_email")
-        if st.button("Enviar Enlace"):
-            try:
-                # Ajusta esta URL a tu proyecto real
-                mi_url = "https://concreto5-tu-proyecto.streamlit.app" 
-                supabase.auth.sign_in_with_otp({
-                    "email": rec_email,
-                    "options": {"email_redirect_to": mi_url}
-                })
-                st.success("✅ Enlace enviado. Revisa tu correo.")
-            except Exception as e:
-                st.error(f"Error: {e}")
+        st.write("Ingresa con un código temporal si olvidaste tu clave.")
+        
+        # PASO 1: ENVIAR
+        email_otp = st.text_input("Tu correo registrado", key="otp_email")
+        if st.button("1. Enviar Código"):
+            if email_otp:
+                try:
+                    supabase.auth.sign_in_with_otp({"email": email_otp})
+                    st.info("📧 Código enviado. Busca el número en tu correo.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        
+        st.divider()
+        
+        # PASO 2: INGRESAR CÓDIGO
+        st.write("Escribe el código aquí:")
+        otp_code = st.text_input("Código de 6 dígitos", key="otp_code_input", placeholder="Ej: 123456")
+        
+        if st.button("2. Validar y Entrar", type="primary"):
+            if email_otp and otp_code:
+                try:
+                    # Canjeamos el código por una sesión
+                    session = supabase.auth.verify_otp({
+                        "email": email_otp, 
+                        "token": otp_code, 
+                        "type": "magiclink"
+                    })
+                    
+                    if session.user:
+                        st.session_state['usuario'] = session.user
+                        st.session_state['access_token'] = session.access_token # Guardamos llave aquí también
+                        st.success("✅ ¡Código correcto! Entrando...")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.error("❌ Código incorrecto o expirado.")
+            else:
+                st.warning("Falta el correo o el código.")
 
 # --- 6. APP PRINCIPAL ---
 def mostrar_app_principal():
     with st.sidebar:
         st.write(f"👤 {st.session_state['usuario'].email}")
+        st.divider()
         
+        # --- CAMBIO DE CONTRASEÑA ---
         with st.expander("🔐 Cambiar Contraseña"):
             with st.form("change_pass_form"):
                 new_pass = st.text_input("Nueva contraseña", type="password")
@@ -104,9 +130,9 @@ def mostrar_app_principal():
                 if st.form_submit_button("Actualizar Clave"):
                     if new_pass == confirm_pass and len(new_pass) >= 6:
                         try:
-                            # [NUEVO] Le recordamos a Supabase quiénes somos antes de actualizar
+                            # [TRUCO] Restauramos la sesión antes de intentar cambiar la clave
                             if st.session_state['access_token']:
-                                supabase.auth.set_session(st.session_state['access_token'], "dummy_refresh_token")
+                                supabase.auth.set_session(st.session_state['access_token'], "dummy_refresh")
                             
                             supabase.auth.update_user({"password": new_pass})
                             st.success("✅ ¡Clave actualizada!")
@@ -123,7 +149,7 @@ def mostrar_app_principal():
             st.rerun()
             
     st.title("Panel de Control 🧱")
-    st.info("Bienvenido al sistema v1.05")
+    st.info("Bienvenido al sistema v1.06")
 
 # --- 7. FLUJO ---
 if st.session_state['usuario']:
