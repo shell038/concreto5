@@ -29,7 +29,7 @@ estilo_personalizado = """
     </style>
     
     <div class="footer-personalizado">
-        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.01
+        Desarrollado por el Ing. Edson Pérez | Sistema de Calidad v1.02
     </div>
 """
 st.markdown(estilo_personalizado, unsafe_allow_html=True)
@@ -88,19 +88,49 @@ def mostrar_acceso():
                 except Exception as e:
                     st.error(f"Error al crear: {e}")
 
-    # --- PESTAÑA 3: RECUPERAR ---
+# --- PESTAÑA 3: INGRESO CON CÓDIGO (SOLUCIÓN FINAL) ---
     with tab3:
-        st.write("Te enviaremos un enlace de recuperación.")
-        with st.form("recover_form"):
-            rec_email = st.text_input("Correo registrado", key="rec_email", placeholder="Ingresa tu correo electrónico")
-            submit_rec = st.form_submit_button("Enviar Correo de Recuperación")
-            
-            if submit_rec:
+        st.write("Si olvidaste tu clave, ingresa usando un código temporal que enviaremos a tu correo.")
+        
+        # --- PASO 1: PEDIR EL CÓDIGO ---
+        email_otp = st.text_input("Ingresa tu correo registrado", key="otp_email")
+        
+        if st.button("1. Enviar Código de Acceso"):
+            if email_otp:
                 try:
-                    supabase.auth.reset_password_for_email(rec_email)
-                    st.success("✅ Correo enviado. Revisa tu bandeja de entrada.")
+                    # Envía el código numérico al correo
+                    supabase.auth.sign_in_with_otp({"email": email_otp})
+                    st.info("📧 Código enviado. Revisa tu bandeja de entrada (busca el número grande).")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error al enviar: {e}")
+            else:
+                st.warning("Por favor, escribe tu correo primero.")
+
+        st.divider() # Línea visual para separar los pasos
+        
+        # --- PASO 2: VALIDAR EL CÓDIGO ---
+        st.write("Una vez tengas el código, ingrésalo aquí:")
+        otp_code = st.text_input("Código de 6 dígitos", placeholder="Ej: 123456", key="otp_code_input")
+        
+        if st.button("2. Validar y Entrar", type="primary"):
+            if email_otp and otp_code:
+                try:
+                    # Intenta canjear el código por una sesión válida
+                    session = supabase.auth.verify_otp({
+                        "email": email_otp, 
+                        "token": otp_code, 
+                        "type": "magiclink"
+                    })
+                    
+                    if session.user:
+                        st.session_state['usuario'] = session.user
+                        st.success("✅ ¡Código correcto! Iniciando sesión...")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.error("❌ El código es incorrecto o ha expirado. Pide uno nuevo.")
+            else:
+                st.warning("Debes ingresar el correo y el código.")
 
 # --- 6. APP PRINCIPAL (SOLO VISIBLE SI ESTÁS LOGUEADO) ---
 def mostrar_app_principal():
