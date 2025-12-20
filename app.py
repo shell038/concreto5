@@ -46,7 +46,7 @@ try:
     supabase = create_client(url, key)
     
     # [CRÍTICO] RESTAURAR SESIÓN SI EXISTE
-    # Esto evita el error "Auth session missing" al recargar la página
+    # Esto evita que Supabase "olvide" quién eres al recargar la página
     if st.session_state['sesion_activa']:
         try:
             supabase.auth.set_session(
@@ -54,7 +54,7 @@ try:
                 st.session_state['sesion_activa'].refresh_token
             )
         except Exception as e:
-            # Si el token venció o hay error, limpiamos todo para obligar a reloguear
+            # Si el token venció, limpiamos todo para obligar a reloguear limpiamente
             st.session_state['usuario'] = None
             st.session_state['sesion_activa'] = None
 except Exception as e:
@@ -68,7 +68,7 @@ def mostrar_acceso():
     
     tab1, tab2, tab3 = st.tabs(["Iniciar Sesión", "Crear Usuario", "Ingreso con Código (Olvidé Clave)"])
     
-    # --- LOGIN CLÁSICO ---
+    # --- TAB 1: LOGIN CLÁSICO ---
     with tab1:
         with st.form("login_form"):
             email = st.text_input("Correo Electrónico", key="login_email")
@@ -79,14 +79,14 @@ def mostrar_acceso():
                 try:
                     session = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state['usuario'] = session.user
-                    st.session_state['sesion_activa'] = session # <--- GUARDAMOS LA SESIÓN TÉCNICA
+                    st.session_state['sesion_activa'] = session # Guardamos la sesión técnica
                     st.success("✅ Acceso autorizado")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
                     st.error("❌ Usuario o contraseña incorrectos")
 
-    # --- REGISTRO DE USUARIO ---
+    # --- TAB 2: REGISTRO DE USUARIO ---
     with tab2:
         st.info("Solo para personal autorizado.")
         with st.form("signup_form"):
@@ -101,7 +101,7 @@ def mostrar_acceso():
                 except Exception as e:
                     st.error(f"Error al crear: {e}")
 
-    # --- INGRESO CON CÓDIGO (OTP) ---
+    # --- TAB 3: INGRESO CON CÓDIGO (OTP) ---
     with tab3:
         st.write("Si olvidaste tu clave, ingresa usando un código temporal.")
         
@@ -112,7 +112,7 @@ def mostrar_acceso():
             if email_otp:
                 try:
                     supabase.auth.sign_in_with_otp({"email": email_otp})
-                    st.info("📧 Código enviado. Revisa tu bandeja de entrada (busca el número grande).")
+                    st.info("📧 Código enviado. Revisa tu bandeja de entrada.")
                 except Exception as e:
                     st.error(f"Error al enviar: {e}")
             else:
@@ -126,21 +126,23 @@ def mostrar_acceso():
         
         if st.button("2. Validar y Entrar", type="primary"):
             if email_otp and otp_code:
-                try:
-                    session = supabase.auth.verify_otp({
-                        "email": email_otp, 
-                        "token": otp_code, 
-                        "type": "magiclink"
-                    })
-                    
-                    if session.user:
-                        st.session_state['usuario'] = session.user
-                        st.session_state['sesion_activa'] = session # <--- GUARDAMOS LA SESIÓN TÉCNICA AQUÍ TAMBIÉN
-                        st.success("✅ ¡Código correcto! Iniciando sesión...")
-                        time.sleep(1)
-                        st.rerun()
-                except Exception as e:
-                    st.error("❌ El código es incorrecto o ha expirado. Pide uno nuevo.")
+                # SPINNER: Para mostrar que está trabajando y evitar doble clic
+                with st.spinner("Verificando código con el servidor..."):
+                    try:
+                        session = supabase.auth.verify_otp({
+                            "email": email_otp, 
+                            "token": otp_code, 
+                            "type": "magiclink"
+                        })
+                        
+                        if session.user:
+                            st.session_state['usuario'] = session.user
+                            st.session_state['sesion_activa'] = session # Guardamos la sesión técnica
+                            st.success("✅ ¡Código correcto! Entrando...")
+                            time.sleep(1)
+                            st.rerun()
+                    except Exception as e:
+                        st.error("❌ Error: El código ya venció o es incorrecto. Pide uno nuevo en el paso 1.")
             else:
                 st.warning("Debes ingresar el correo y el código.")
 
@@ -177,7 +179,7 @@ def mostrar_app_principal():
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state['usuario'] = None
-            st.session_state['sesion_activa'] = None # <--- LIMPIEZA TOTAL
+            st.session_state['sesion_activa'] = None # Limpieza total
             st.rerun()
             
     # --- ÁREA DE TRABAJO ---
