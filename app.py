@@ -105,12 +105,39 @@ def mostrar_acceso():
 # --- 6. APP PRINCIPAL (SOLO VISIBLE SI ESTÁS LOGUEADO) ---
 def mostrar_app_principal():
     with st.sidebar:
+        # --- SECCIÓN SUPERIOR: DATOS DEL USUARIO ---
         st.write(f"👤 Ing. {st.session_state['usuario'].email}")
+        st.divider() # Línea separadora estética
+
+        # --- SECCIÓN MEDIA: CAMBIO DE CONTRASEÑA ---
+        with st.expander("🔐 Cambiar Contraseña"):
+            with st.form("change_pass_form"):
+                new_password = st.text_input("Nueva Contraseña", type="password")
+                confirm_password = st.text_input("Confirmar Contraseña", type="password")
+                submit_change = st.form_submit_button("Actualizar Clave")
+            
+                if submit_change:
+                    if new_password == confirm_password:
+                        if len(new_password) >= 6:
+                            try:
+                                supabase.auth.update_user({"password": new_password})
+                                st.success("✅ ¡Contraseña actualizada!")
+                                time.sleep(1)
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                        else:
+                            st.warning("Mínimo 6 caracteres.")
+                    else:
+                        st.error("Las contraseñas no coinciden.")
+
+        # --- SECCIÓN INFERIOR: SALIDA ---
+        st.divider()
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state['usuario'] = None
             st.rerun()
             
+    # --- ÁREA PRINCIPAL DE TRABAJO ---
     st.title("Panel de Control 🧱")
     st.divider()
     
