@@ -11,8 +11,8 @@ from components.sidebar import mostrar_sidebar
 from modules.dashboard import mostrar_dashboard
 from modules.muestreo import mostrar_muestreo
 from modules.slump import mostrar_slump
-from modules.probetas import mostrar_probetas
-from modules.reportes import mostrar_reportes
+"""from modules.probetas import mostrar_probetas"""
+"""from modules.reportes import mostrar_reportes"""
 from database.supabase_client import inicializar_supabase
 
 # Configuración de página
